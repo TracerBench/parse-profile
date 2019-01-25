@@ -9,7 +9,8 @@ export function exportHierarchy(
     filePath: string) {
 
     const newTraceData = JSON.parse(JSON.stringify(rawTraceData));
-    const events: ITraceEvent[] = newTraceData.traceEvents;
+    // const events: ITraceEvent[] = newTraceData.traceEvents;
+    const events: ITraceEvent[] = [];
     hierarchy.each(node => {
         const completeEvent: ITraceEvent = {
             pid: trace.mainProcess!.id,

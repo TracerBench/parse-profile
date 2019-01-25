@@ -1,5 +1,8 @@
 import { hierarchy, HierarchyNode } from 'd3-hierarchy';
 import {
+  addRenderNodes
+} from './renderEvents';
+import {
   FUNCTION_NAME,
   ICpuProfile,
   ICpuProfileNode,
@@ -87,128 +90,6 @@ export default class CpuProfile {
     if (n === undefined) throw new Error(`invalid node id: ${id}`);
     return n;
   }
-}
-
-function addRenderNodes(hierarchy: HierarchyNode<ICpuProfileNode>, events: ITraceEvent[]) {
-  const render2node = {};
-
-  events.forEach(event => {
-    if (isRenderPhase(event)) {
-      // console.log(`\nevent:${event.name}`);
-      // const renderParent = trace.getParent(event);
-      let found: HierarchyNode<ICpuProfileNode> | null = null;
-      let min = null;
-      hierarchy.eachBefore((node: HierarchyNode<ICpuProfileNode>) => {
-        if (node.data.self !== 0) {
-          if (node.data.min !== -1 && node.data.max !== -1 &&
-              node.data.min < event.ts && event.ts + event.dur! < node.data.max) {
-            // tslint:disable-next-line:max-line-length
-            console.log(`node:${node.data.callFrame.functionName} min:${node.data.min - event.ts} max:${node.data.max - event.ts + event.dur!}`);
-            console.log(`dur:${node.data.max - node.data.min}`);
-            found = node;
-          }
-        }
-      });
-
-      if (found) {
-        this.insertRenderEvent(found, event);
-      }
-    }
-  });
-}
-
-function insertRenderEvent(node: HierarchyNode<ICpuProfileNode>, event: ITraceEvent) {
-  const eventStart = event.ts;
-  const eventEnd = event.ts + event.dur!;
-
-  // create render node and set its length
-  const renderNode = node.copy();
-  renderNode.data = JSON.parse(JSON.stringify(node.data));
-  renderNode.data.min = eventStart;
-  renderNode.data.max = eventEnd;
-  renderNode.data.self = 0;
-  renderNode.data.callFrame.functionName = event.name;
-
-  // children who are to the left or right of the render event
-  const childrenForOriginal = node.children!.filter(child => child.data.max < eventStart ||
-                                                             child.data.min > eventEnd);
-  // children who are within the render event
-  const childrenForRenderNode = node.children!.filter(child => child.data.min > eventStart &&
-                                                               child.data.max < eventEnd);
-  // children who are split by the render event
-  const leftSplitChild = node.children!.find(n => n.data.min < eventStart && n.data.max > eventStart);
-  const rightSplitChild = node.children!.find(n => n.data.min < eventEnd && n.data.max > eventEnd);
-
-  // fix parent/child links for all children other then split children
-  node.children = childrenForOriginal;
-  renderNode.children = childrenForRenderNode;
-  childrenForRenderNode.forEach(child => child.parent = renderNode);
-
-  // fix node/render node parent/child link
-  renderNode.parent = node;
-  node.children!.push(renderNode);
-
-  splitChild(node, renderNode, leftSplitChild, eventStart);
-  splitChild(renderNode, node, rightSplitChild, eventEnd);
-}
-
-function fixLeftsChildren(node: HierarchyNode<ICpuProfileNode>) {
-  if (node.children === undefined) return 0;
-
-  // remove any children which end after node
-  node.children = node.children.filter(child => child.data.max < node.data.max);
-  // return total time of children
-  return node.children.reduce((a, b) => a + b.data.total, 0);
-}
-
-function fixRightsChildren(node: HierarchyNode<ICpuProfileNode>) {
-  if (node.children === undefined) return 0;
-
-  // remove any children which start before node
-  node.children = node.children.filter(child => child.data.min > node.data.min);
-  // return total time of children
-  return node.children.reduce((a, b) => a + b.data.total, 0);
-}
-
-// responsible for splitting the node, linking up the halves with the passed in parents.
-function splitChild(leftParent: HierarchyNode<ICpuProfileNode>,
-                    rightParent: HierarchyNode<ICpuProfileNode>,
-                    node: HierarchyNode<ICpuProfileNode> | undefined, splitTS: number) {
-  if (node === undefined) {
-    return {middleLeftTime: 0, middleRightTime: 0};
-  }
-  // Split node
-  const left = node;
-  const right = node.copy();
-  right.data = JSON.parse(JSON.stringify(node.data));
-
-  left.data.max = splitTS;
-  right.data.min = splitTS;
-
-  // Add back in the child/parent links for the split node
-  left.parent = leftParent;
-  leftParent.children!.push(left);
-  right.parent = rightParent;
-  rightParent.children!.push(right);
-
-  // if no further children, you are done
-  if (node.children === undefined) {
-    left.data.self = left.data.total = left.data.max - left.data.min;
-    right.data.self = right.data.total = right.data.max - right.data.min;
-    return {middleLeftTime: left.data.total, middleRightTime: right.data.total};
-  }
-
-  // remove right children and middle child from left node & visa versa for right node.
-  const middleChild = node.children.find(n => n.data.min < splitTS && n.data.max > splitTS);
-  let leftTime = fixLeftsChildren(left);
-  let rightTime = fixRightsChildren(right);
-
-  const { middleLeftTime, middleRightTime } = splitChild(left, right, middleChild, splitTS);
-  leftTime += middleLeftTime;
-  rightTime += middleRightTime;
-
-  // return total time of the left and right side of split, so parents can determine their own self times
-  return {middleLeftTime: leftTime, middleRightTime: rightTime};
 }
 
 function expandAndFix(
@@ -496,24 +377,6 @@ function processExecute(
 
   }
 }*/
-
-function isRenderStart(event: ITraceEvent) {
-  return event.ph === TRACE_EVENT_PHASE.NESTABLE_ASYNC_BEGIN && event.name.charAt(0) === '<';
-}
-
-function isRenderEnd(event: ITraceEvent) {
-  return event.ph === TRACE_EVENT_PHASE.NESTABLE_ASYNC_END && event.name.charAt(0) === '<';
-}
-
-function isRenderPhase(event: ITraceEvent) {
-  return event.ph === TRACE_EVENT_PHASE.COMPLETE && event.name.charAt(0) === '<';
-}
-
-function isRenderEvent(event: ITraceEvent) {
-  return event.ph === TRACE_EVENT_PHASE.COMPLETE ||
-         event.ph === TRACE_EVENT_PHASE.NESTABLE_ASYNC_END &&
-         event.name.charAt(0) === '<';
-}
 
 function processEvent(
   event: ITraceEvent,

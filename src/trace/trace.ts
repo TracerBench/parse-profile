@@ -190,8 +190,18 @@ export default class Trace {
     stack.push(event);
   }
 
+  private isRenderEnd(event: ITraceEvent) {
+    return event.ph === TRACE_EVENT_PHASE.NESTABLE_ASYNC_END &&
+           event.name.charAt(0) === '<';
+  }
+
+  private isRenderStart(event: ITraceEvent) {
+    return event.ph === TRACE_EVENT_PHASE.NESTABLE_ASYNC_BEGIN &&
+           event.name.charAt(0) === '<';
+  }
+
   private addEvent(event: ITraceEvent) {
-    if (event.ph === TRACE_EVENT_PHASE.END) {
+    if (event.ph === TRACE_EVENT_PHASE.END || this.isRenderEnd(event)) {
       this.endEvent(event);
       return;
     }
@@ -209,7 +219,7 @@ export default class Trace {
       this.addMetadata(event);
       return;
     }
-    if (event.ph === TRACE_EVENT_PHASE.BEGIN) {
+    if (event.ph === TRACE_EVENT_PHASE.BEGIN || this.isRenderStart(event)) {
       this.stack.push(event);
     }
     this.bounds.addEvent(event);
