@@ -1,4 +1,7 @@
-# parse-profile [![Build Status](https://travis-ci.org/TracerBench/parse-profile.svg?branch=master)](https://travis-ci.org/TracerBench/parse-profile)
+# Archived
+This repo has officially been archived. Going forward consumption of Parse-Profile will be via TracerBench. 
+
+---
 
 A suite of CLI tools for generating and parsing CPUProfile's.
 
